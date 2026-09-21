@@ -433,11 +433,25 @@
         <input type="file" id="photoInput" accept="image/*" capture="environment" hidden>
       </div>
 
-      <div class="actions">
-        <button type="button" class="primary" id="copyBtn" disabled>Sao chép kết quả</button>
-        <button type="button" class="outline" id="slipBtn" disabled>Xuất phiếu</button>
-        <button type="button" class="ghost" id="resetBtn">Nhập lại</button>
-      </div>
+    <div class="actions">
+  <button type="button" class="primary" id="copyBtn" disabled>
+    Sao chép kết quả
+  </button>
+
+  <button type="button" class="outline" id="slipBtn" disabled>
+    Xuất phiếu
+  </button>
+
+  <button type="button" class="ghost" id="saveSheetBtn">
+    💾 Lưu vào Google Sheets
+  </button>
+
+  <button type="button" class="ghost" id="resetBtn">
+    Nhập lại
+  </button>
+</div>
+
+<div id="saveStatus" style="text-align:center;margin-top:10px;font-weight:600;"></div>
     </div>
   </div>
 </div>
@@ -1371,6 +1385,80 @@
   addRow('chi', false);
   addRow('thu', false);
   calc();
+// ===== LƯU DỮ LIỆU VÀO GOOGLE SHEETS =====
+
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyNkR9tTCrZ2WZVbpWGDMnHBajo24C8idpy7J2MjIFE3lUGnXt9hs3tJLuukI7LUFq8lg/exec";
+
+const saveSheetBtn = document.getElementById("saveSheetBtn");
+const saveStatus = document.getElementById("saveStatus");
+
+saveSheetBtn.addEventListener("click", async function () {
+
+  // Tính lại kết quả trước khi lưu
+  calc();
+
+  if (!last.slip || last.state === "empty") {
+    saveStatus.textContent = "⚠️ Vui lòng nhập đầy đủ thông tin trước.";
+    return;
+  }
+
+  const s = last.slip;
+
+  const data = {
+    name: s.name || "",
+    date: s.date || "",
+    time: s.time || "",
+
+    // Tiền thực tế
+    cashReal: s.a ? s.a.v : 0,
+    transferReal: s.b ? s.b.v : 0,
+
+    // Tiền chi / thu
+    totalChi: s.chi ? s.chi.sum : 0,
+    totalThu: s.thu ? s.thu.sum : 0,
+
+    // Tiền hệ thống
+    cashSystem: s.a1 ? s.a1.v : 0,
+    transferSystem: s.b1 ? s.b1.v : 0,
+
+    // Kết quả
+    real: s.real || 0,
+    sys: s.sys || 0,
+    diff: s.diff || 0,
+    state: s.state || "",
+    note: s.note || ""
+  };
+
+  saveSheetBtn.disabled = true;
+  saveStatus.textContent = "⏳ Đang lưu...";
+
+  try {
+
+    await fetch(GOOGLE_SCRIPT_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8"
+      },
+      body: JSON.stringify(data)
+    });
+
+    saveStatus.textContent = "✅ Đã lưu vào Google Sheets";
+
+  } catch (error) {
+
+    console.error(error);
+    saveStatus.textContent = "❌ Không lưu được dữ liệu";
+
+  } finally {
+
+    saveSheetBtn.disabled = false;
+
+    setTimeout(function () {
+      saveStatus.textContent = "";
+    }, 4000);
+  }
+
 })();
 </script>
 </body>

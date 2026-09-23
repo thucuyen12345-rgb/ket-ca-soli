@@ -434,10 +434,18 @@
       </div>
 
       <div class="actions">
-        <button type="button" class="primary" id="copyBtn" disabled>Sao chép kết quả</button>
-        <button type="button" class="outline" id="slipBtn" disabled>Xuất phiếu</button>
-        <button type="button" class="ghost" id="resetBtn">Nhập lại</button>
-      </div>
+  <button type="button" class="primary" id="copyBtn" disabled>Sao chép kết quả</button>
+
+  <button type="button" class="outline" id="slipBtn" disabled>Xuất phiếu</button>
+
+  <button type="button" class="outline" id="saveSheetBtn" disabled>
+    Lưu vào Google Sheets
+  </button>
+
+  <button type="button" class="ghost" id="resetBtn">Nhập lại</button>
+</div>
+
+<div id="saveStatus" style="text-align:center;margin-top:10px;font-weight:600;"></div>
     </div>
   </div>
 </div>
@@ -1372,6 +1380,39 @@
   addRow('thu', false);
   calc();
 })();
+  // ===== LƯU DỮ LIỆU VÀO GOOGLE SHEETS =====
+
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwSamWuBr1-tYx8uUnW4ia8Qs_tAdcJD9V4p1F8-JYprUkDVSDP-txvXD_T1OnXVtLseg/exec";
+
+const saveSheetBtn = document.getElementById("saveSheetBtn");
+const saveStatus = document.getElementById("saveStatus");
+
+saveSheetBtn.addEventListener("click", async function () {
+  saveStatus.textContent = "⏳ Đang lưu...";
+
+  try {
+    const data = {
+      name: document.getElementById("name")?.value || "",
+      date: document.getElementById("date")?.value || "",
+      time: document.getElementById("time")?.value || ""
+    };
+
+    const response = await fetch(GOOGLE_SCRIPT_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8"
+      },
+      body: JSON.stringify(data)
+    });
+
+    saveStatus.textContent = "✅ Đã gửi dữ liệu vào Google Sheets";
+
+  } catch (error) {
+    console.error(error);
+    saveStatus.textContent = "❌ Không lưu được dữ liệu";
+  }
+});
 </script>
 </body>
 </html>

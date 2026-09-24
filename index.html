@@ -1382,95 +1382,79 @@
   // ===== LƯU DỮ LIỆU VÀO GOOGLE SHEETS =====
   // Đặt phần này bên trong cùng IIFE để có thể truy cập trực tiếp biến `last`
   // và toàn bộ dữ liệu đã được calc() tính toán.
+  // ===== LƯU VÀO GOOGLE SHEETS =====
   var GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz7lEJ_hwlID1vmynWapH8vTvi-sZvvAftHkDJ3bMb10h_84se5MfDyC7vAn7tYWQ828g/exec";
+
   var saveSheetBtn = document.getElementById('saveSheetBtn');
   var saveStatus = document.getElementById('saveStatus');
 
-  function sheetMoney(n) { return Number(n || 0); }
+  if (saveSheetBtn) {
+    saveSheetBtn.addEventListener('click', function () {
+      if (!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.indexOf('AKfycb') === -1) {
+        alert('Vui lòng kiểm tra lại GOOGLE_SCRIPT_URL!');
+        return;
+      }
 
-  function buildSheetData() {
-    var s = last && last.slip;
-    if (!s || last.state === 'empty') return null;
+      // Đảm bảo cập nhật kết quả tính toán mới nhất từ giao diện
+      calc();
 
-    return {
-      // Giữ các field cơ bản để tương thích với Apps Script hiện tại.
-      name: s.name || '',
-      date: s.date || '',
-      time: s.time || '',
+      if (!last || !last.slip) {
+        alert('Chưa có dữ liệu kết ca!');
+        return;
+      }
 
-      // Kết quả tổng quan.
-      state: s.state || '',
-      result: s.result || '',
-      note: s.note || '',
+      var s = last.slip;
 
-      // Số liệu thực tế / hệ thống.
-      cash_actual: sheetMoney(s.a && s.a.v),
-      transfer_actual: sheetMoney(s.b && s.b.v),
-      cash_system: sheetMoney(s.a1 && s.a1.v),
-      transfer_system: sheetMoney(s.b1 && s.b1.v),
-      total_actual: sheetMoney(s.real),
-      total_system: sheetMoney(s.sys),
-      difference: sheetMoney(s.diff),
+      // Lấy chính xác các giá trị số và chữ từ slip gửi sang Google Sheets
+      var payload = {
+        datetime: (s.date || '') + ' ' + (s.time || ''),
+        staff: s.name || '',
+        realCash: (s.a && typeof s.a.v === 'number') ? s.a.v : 0,
+        realTransfer: (s.b && typeof s.b.v === 'number') ? s.b.v : 0,
+        totalChi: (s.chi && typeof s.chi.sum === 'number') ? s.chi.sum : 0,
+        totalThu: (s.thu && typeof s.thu.sum === 'number') ? s.thu.sum : 0,
+        sysCash: (s.a1 && typeof s.a1.v === 'number') ? s.a1.v : 0,
+        sysTransfer: (s.b1 && typeof s.b1.v === 'number') ? s.b1.v : 0,
+        diff: typeof s.diff === 'number' ? s.diff : 0,
+        result: s.result || '',
+        note: s.note || ''
+      };
 
-      // Chi / thu dạng mảng để Apps Script có thể xử lý đầy đủ.
-      chi_total: sheetMoney(s.chi && s.chi.sum),
-      thu_total: sheetMoney(s.thu && s.thu.sum),
-      chi_items: (s.chi && s.chi.items || []).map(function (item) {
-        return { label: item.label || '', value: sheetMoney(item.value), expr: item.expr || '' };
-      }),
-      thu_items: (s.thu && s.thu.items || []).map(function (item) {
-        return { label: item.label || '', value: sheetMoney(item.value), expr: item.expr || '' };
-      }),
+      saveSheetBtn.disabled = true;
+      saveSheetBtn.textContent = 'Đang lưu...';
+      if (saveStatus) {
+        saveStatus.style.color = 'var(--ink)';
+        saveStatus.textContent = 'Đang gửi dữ liệu đến Google Sheets...';
+      }
 
-      // Bản dữ liệu gọn để Apps Script dễ lưu nếu cần.
-      chi_text: (s.chi && s.chi.items || []).map(function (item) {
-        return (item.label || 'Không ghi chú') + ': ' + sheetMoney(item.value);
-      }).join(' | '),
-      thu_text: (s.thu && s.thu.items || []).map(function (item) {
-        return (item.label || 'Không ghi chú') + ': ' + sheetMoney(item.value);
-      }).join(' | '),
-
-      // Timestamp theo trình duyệt.
-      sent_at: new Date().toISOString()
-    };
-  }
-
-  saveSheetBtn.addEventListener('click', async function () {
-    if (saveSheetBtn.disabled || saveSheetBtn.dataset.saving === '1') return;
-
-    var data = buildSheetData();
-    if (!data) {
-      saveStatus.textContent = '⚠️ Hãy nhập số liệu kết ca trước.';
-      return;
-    }
-
-    saveSheetBtn.dataset.saving = '1';
-    saveSheetBtn.disabled = true;
-    saveSheetBtn.textContent = 'Đang lưu…';
-    saveStatus.textContent = '⏳ Đang gửi dữ liệu lên Google Sheets…';
-
-    try {
-      // Google Apps Script Web App thường redirect và không trả CORS response đọc được
-      // từ trình duyệt, vì vậy dùng text/plain + no-cors để gửi POST ổn định.
-      await fetch(GOOGLE_SCRIPT_URL, {
+      fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST',
         mode: 'no-cors',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8'
-        },
-        body: JSON.stringify(data)
-      });
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      .then(function () {
+        saveSheetBtn.textContent = 'Lưu vào Google Sheets';
+        saveSheetBtn.disabled = false;
 
-      saveStatus.textContent = '✅ Đã gửi dữ liệu lên Google Sheets.';
-    } catch (error) {
-      console.error('Google Sheets error:', error);
-      saveStatus.textContent = '❌ Không gửi được dữ liệu. Kiểm tra kết nối hoặc Apps Script.';
-    } finally {
-      delete saveSheetBtn.dataset.saving;
-      saveSheetBtn.textContent = 'Lưu vào Google Sheets';
-      saveSheetBtn.disabled = last.state === 'empty';
-    }
-  });
+        if (saveStatus) {
+          saveStatus.style.color = 'var(--ok)';
+          saveStatus.textContent = '✓ Đã lưu thành công vào Google Sheets!';
+          setTimeout(function () { saveStatus.textContent = ''; }, 4000);
+        }
+      })
+      .catch(function (err) {
+        console.error(err);
+        saveSheetBtn.textContent = 'Lưu vào Google Sheets';
+        saveSheetBtn.disabled = false;
+
+        if (saveStatus) {
+          saveStatus.style.color = 'var(--short)';
+          saveStatus.textContent = '✕ Lỗi kết nối!';
+        }
+      });
+    });
+  }
 
   addRow('chi', false);
   addRow('thu', false);

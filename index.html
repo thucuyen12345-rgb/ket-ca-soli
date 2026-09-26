@@ -337,6 +337,13 @@
           <label for="staff">Tên nhân viên</label>
           <input class="text-input" id="staff" type="text" maxlength="40" autocomplete="off" placeholder="Ví dụ: Nguyễn Văn A" enterkeyhint="next">
         </div>
+        <div class="field">
+          <label id="caLamLabel">Tên ca</label>
+          <div class="opts" role="radiogroup" aria-labelledby="caLamLabel">
+            <label class="opt"><input type="radio" name="caLam" value="Ca Sáng" checked><span>Ca Sáng</span></label>
+            <label class="opt"><input type="radio" name="caLam" value="Ca Tối"><span>Ca Tối</span></label>
+          </div>
+        </div>
       </section>
 
       <section class="panel" aria-labelledby="h-real">
@@ -442,10 +449,15 @@
     Lưu vào Google Sheets
   </button>
 
+  <button type="button" class="outline" id="saveFormBtn" disabled>
+    Gửi lên Google Form
+  </button>
+
   <button type="button" class="ghost" id="resetBtn">Nhập lại</button>
 </div>
 
 <div id="saveStatus" style="text-align:center;margin-top:10px;font-weight:600;"></div>
+<div id="saveFormStatus" style="text-align:center;margin-top:10px;font-weight:600;"></div>
     </div>
   </div>
 </div>
@@ -501,6 +513,13 @@
   var FLOAT_AMOUNT = 1000000;
   try { if (window.localStorage.getItem('ketca_float') === '0') optFloat.checked = false; } catch (e) {}
   try { var savedName = window.localStorage.getItem('ketca_staff'); if (savedName) staff.value = savedName; } catch (e) {}
+  try {
+    var savedCa = window.localStorage.getItem('ketca_ca');
+    if (savedCa) {
+      var caEl = document.querySelector('input[name="caLam"][value="' + savedCa + '"]');
+      if (caEl) caEl.checked = true;
+    }
+  } catch (e) {}
   var mq = window.matchMedia ? window.matchMedia('(pointer: coarse), (max-width: 859px)') : { matches: false };
   var activeEl = null;
   var MAXTERMS = 30;
@@ -853,6 +872,8 @@
     // Chỉ cho phép lưu Google Sheets khi đã có số liệu kết ca.
     var saveSheetBtn = document.getElementById('saveSheetBtn');
     if (saveSheetBtn && !saveSheetBtn.dataset.saving) saveSheetBtn.disabled = !has;
+    var saveFormBtn = document.getElementById('saveFormBtn');
+    if (saveFormBtn && !saveFormBtn.dataset.saving) saveFormBtn.disabled = !has;
 
     // Nội dung sao chép
     var now = new Date();
@@ -1373,6 +1394,9 @@
       lists[name].el.innerHTML = '';
       addRow(name, false);
     });
+    var caDefault = document.querySelector('input[name="caLam"][value="Ca Sáng"]');
+    if (caDefault) caDefault.checked = true;
+    try { window.localStorage.setItem('ketca_ca', 'Ca Sáng'); } catch (e) {}
     calc();
     inputs.a.focus();
   });
@@ -1388,6 +1412,12 @@
   });
   staff.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { e.preventDefault(); inputs.a.focus(); }
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('input[name="caLam"]'), function (r) {
+    r.addEventListener('change', function () {
+      try { window.localStorage.setItem('ketca_ca', r.value); } catch (e) {}
+    });
   });
 
   // ===== LƯU DỮ LIỆU VÀO GOOGLE SHEETS =====
@@ -1462,6 +1492,94 @@
         if (saveStatus) {
           saveStatus.style.color = 'var(--short)';
           saveStatus.textContent = '✕ Lỗi kết nối!';
+        }
+      });
+    });
+  }
+
+  // ===== GỬI DỮ LIỆU LÊN GOOGLE FORM (form của người khác, không cần quyền chỉnh sửa) =====
+  // Cơ chế: POST thẳng vào URL formResponse của Google Form kèm các entry.xxxxxxxxx
+  // tương ứng với từng câu hỏi (lấy được từ "liên kết đã điền sẵn" / mã nguồn trang form).
+  var GOOGLE_FORM_ACTION = 'https://docs.google.com/forms/d/e/1FAIpQLSdLzkA_85t9dI_XyWg18bZUkTR_b-_PqbFI_FjvZ8N7MkchqQ/formResponse';
+  var GOOGLE_FORM_ENTRIES = {
+    name: 'entry.1758796366',        // Tên người kết ca
+    ca: 'entry.267492732',           // Tên ca (Ca Sáng / Ca Tối)
+    sysCash: 'entry.1359614661',     // Tiền mặt hệ thống
+    sysTransfer: 'entry.863395920',  // Tiền chuyển khoản hệ thống
+    realCash: 'entry.750236534',     // Tiền mặt thực tế
+    realTransfer: 'entry.308584411', // Tiền chuyển khoản thực tế
+    chiTotal: 'entry.311640180',     // Tiền chi
+    chiNote: 'entry.133587427',      // Nội dung chi
+    diff: 'entry.1060743067',        // Tiền thiếu/đủ
+    note: 'entry.733555123'          // Diễn giải khác/thiếu/đủ/lệch
+  };
+
+  var saveFormBtn = document.getElementById('saveFormBtn');
+  var saveFormStatus = document.getElementById('saveFormStatus');
+
+  if (saveFormBtn) {
+    saveFormBtn.addEventListener('click', function () {
+      calc();
+      if (!last || !last.slip) {
+        alert('Chưa có dữ liệu kết ca!');
+        return;
+      }
+      var s = last.slip;
+      var caEl = document.querySelector('input[name="caLam"]:checked');
+      var caVal = caEl ? caEl.value : '';
+
+      var chiNote = (s.chi && s.chi.items && s.chi.items.length)
+        ? s.chi.items.map(function (it) { return (it.label || 'Không ghi chú') + ': ' + money(it.value); }).join(', ')
+        : '';
+
+      var body = new URLSearchParams();
+      body.set(GOOGLE_FORM_ENTRIES.name, s.name || '');
+      body.set(GOOGLE_FORM_ENTRIES.ca, caVal);
+      body.set(GOOGLE_FORM_ENTRIES.sysCash, String((s.a1 && typeof s.a1.v === 'number') ? s.a1.v : 0));
+      body.set(GOOGLE_FORM_ENTRIES.sysTransfer, String((s.b1 && typeof s.b1.v === 'number') ? s.b1.v : 0));
+      body.set(GOOGLE_FORM_ENTRIES.realCash, String((s.a && typeof s.a.v === 'number') ? s.a.v : 0));
+      body.set(GOOGLE_FORM_ENTRIES.realTransfer, String((s.b && typeof s.b.v === 'number') ? s.b.v : 0));
+      body.set(GOOGLE_FORM_ENTRIES.chiTotal, String((s.chi && typeof s.chi.sum === 'number') ? s.chi.sum : 0));
+      body.set(GOOGLE_FORM_ENTRIES.chiNote, chiNote);
+      body.set(GOOGLE_FORM_ENTRIES.diff, String(typeof s.diff === 'number' ? s.diff : 0));
+      body.set(GOOGLE_FORM_ENTRIES.note, s.note || '');
+
+      saveFormBtn.disabled = true;
+      saveFormBtn.dataset.saving = '1';
+      saveFormBtn.textContent = 'Đang gửi...';
+      if (saveFormStatus) {
+        saveFormStatus.style.color = 'var(--ink)';
+        saveFormStatus.textContent = 'Đang gửi dữ liệu lên Google Form...';
+      }
+
+      // Google Form không cho phép đọc kết quả qua CORS, nên dùng no-cors
+      // (giống hệt cách gửi Google Sheets ở trên): coi như gửi xong nếu không lỗi mạng.
+      fetch(GOOGLE_FORM_ACTION, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+      })
+      .then(function () {
+        saveFormBtn.textContent = 'Gửi lên Google Form';
+        saveFormBtn.disabled = false;
+        delete saveFormBtn.dataset.saving;
+
+        if (saveFormStatus) {
+          saveFormStatus.style.color = 'var(--ok)';
+          saveFormStatus.textContent = '✓ Đã gửi lên Google Form!';
+          setTimeout(function () { saveFormStatus.textContent = ''; }, 4000);
+        }
+      })
+      .catch(function (err) {
+        console.error(err);
+        saveFormBtn.textContent = 'Gửi lên Google Form';
+        saveFormBtn.disabled = false;
+        delete saveFormBtn.dataset.saving;
+
+        if (saveFormStatus) {
+          saveFormStatus.style.color = 'var(--short)';
+          saveFormStatus.textContent = '✕ Lỗi kết nối!';
         }
       });
     });

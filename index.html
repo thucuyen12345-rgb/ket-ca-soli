@@ -983,12 +983,23 @@
         im.onerror = function () { reject(new Error('decode')); };
         im.onload = function () {
           var w = im.naturalWidth, h = im.naturalHeight;
+          var rotate = w > h; // luôn đưa ảnh chụp về dạng đứng
           var k = Math.min(1, 1800 / Math.max(w, h));
           var cw = Math.max(1, Math.round(w * k)), ch = Math.max(1, Math.round(h * k));
-          var c = document.createElement('canvas'); c.width = cw; c.height = ch;
+          var c = document.createElement('canvas');
+          c.width = rotate ? ch : cw;
+          c.height = rotate ? cw : ch;
           var g = c.getContext('2d');
-          g.fillStyle = '#fff'; g.fillRect(0, 0, cw, ch);
-          g.drawImage(im, 0, 0, cw, ch);
+          g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+          if (rotate) {
+            g.save();
+            g.translate(c.width / 2, c.height / 2);
+            g.rotate(Math.PI / 2);
+            g.drawImage(im, -cw / 2, -ch / 2, cw, ch);
+            g.restore();
+          } else {
+            g.drawImage(im, 0, 0, cw, ch);
+          }
           var url = c.toDataURL('image/jpeg', 0.9);
           var out = new Image();
           out.onload = function () { resolve({ img: out, thumb: url }); };
@@ -1020,7 +1031,7 @@
   // ===== Xuất phiếu dạng hình ảnh =====
   var SLIP_FONT = '"Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
   var SLIP_SCALE = 2;
-  var SLIP_W_SHOT = 1200, SLIP_W_SOLO = 660, COL_W = 534;
+  var SLIP_W_SHOT = 1312, SLIP_W_SOLO = 660, COL_W = 534;
 
   // Mặt cười ứng với 3 trạng thái: ok = đủ, over = dư, short = thiếu
   var FACE_SRC = {
@@ -1038,8 +1049,8 @@
   function layoutSlip(g, s, shot, opt) {
     var W = shot ? SLIP_W_SHOT : SLIP_W_SOLO;
     var cardX = 32, cardY = 28, cardW = W - 64, inset = 24;
-    var X0 = shot ? 574 : cardX + Math.round((cardW - COL_W) / 2), X1 = X0 + COL_W;
-    var shotX = cardX + 52, shotW = 422, dividerX = X0 - 36;
+    var X0 = shot ? 686 : cardX + Math.round((cardW - COL_W) / 2), X1 = X0 + COL_W;
+    var shotX = cardX + 52, shotW = COL_W, dividerX = X0 - 36;
     var colR1 = X1 - 168, colR2 = X1 - 4;
     var GREEN = '#2D8A46', BLACK = '#111', GREY = '#9A9A9A', LIGHT = '#D2D2D2', SOFT = '#8A8A8A';
     var col = s.state === 'ok' ? '#2E9A55' : s.state === 'over' ? '#F5A000' : '#EE1C1C';
@@ -1180,7 +1191,7 @@
     }
 
     var b = y + 52;
-    b = row('Tiền mặt', fmtN(s.a.v), s.a.x, fmtN(s.a1.v), s.a1.x, b);
+    b = row('Tiền mặt', fmtN(s.a.v), '', fmtN(s.a1.v), s.a1.x, b);
     b += 48;
     b = row('Chuyển khoản', fmtN(s.b.v), s.b.x, fmtN(s.b1.v), s.b1.x, b);
     y = b + 46; hline(y, GREY);
